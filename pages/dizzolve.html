@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>譜面保管所(仮)</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      background-image: url('../images/background.jpg');
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      background-repeat: no-repeat;
+      touch-action: none;
+      font-family: sans-serif;
+    }
+
+    /* タイトルボタン（固定しないよ） */
+    .title-link {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 20px 0;
+  font-size: 32px;
+  font-weight: bold;
+  color: #333;
+  text-decoration: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 9999; /* 常に最前面に表示 */
+}
+
+    #container {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    #image {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: top left;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- タイトル（画像の上に重なる） -->
+  <a href="../index.html" class="title-link">TAKUMI³譜面保管所(仮)</a>
+
+  <div id="container">
+    <img id="image" src="../images/dizzolve.jpg" alt="ズーム画像">
+  </div>
+
+  <script>
+    const container = document.getElementById('container');
+    const img = document.getElementById('image');
+
+    let scale = 1;
+    let translateX = 0;
+    let translateY = 0;
+    let isDragging = false;
+    let startX, startY;
+
+    let lastTouchDist = null;
+    let lastMidpoint = null;
+    let isTouchDragging = false;
+    let lastTouchPos = null;
+
+    function updateTransform() {
+      img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+    }
+
+    img.onload = () => {
+      const containerRect = container.getBoundingClientRect();
+      const imgNaturalWidth = img.naturalWidth;
+      const imgNaturalHeight = img.naturalHeight;
+
+      const scaleX = containerRect.width / imgNaturalWidth;
+      const scaleY = containerRect.height / imgNaturalHeight;
+      const fitScale = Math.min(scaleX, scaleY, 1);
+
+      scale = fitScale;
+      translateX = (containerRect.width - imgNaturalWidth * scale) / 2;
+      translateY = (containerRect.height - imgNaturalHeight * scale) / 2;
+      updateTransform();
+    };
+
+    container.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      startX = e.clientX - translateX;
+      startY = e.clientY - translateY;
+      container.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      translateX = e.clientX - startX;
+      translateY = e.clientY - startY;
+      updateTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+      container.style.cursor = 'grab';
+    });
+
+    container.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const scaleAmount = -e.deltaY * 0.001;
+      const oldScale = scale;
+      scale += scaleAmount;
+      scale = Math.max(0.1, Math.min(scale, 10));
+
+      const rect = img.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const zoomRatio = scale / oldScale;
+
+      translateX -= mouseX * (zoomRatio - 1);
+      translateY -= mouseY * (zoomRatio - 1);
+
+      updateTransform();
+    }, { passive: false });
+
+    function getDistance(touches) {
+      const [t1, t2] = touches;
+      const dx = t2.clientX - t1.clientX;
+      const dy = t2.clientY - t1.clientY;
+      return Math.hypot(dx, dy);
+    }
+
+    function getMidpoint(touches) {
+      const [t1, t2] = touches;
+      return {
+        x: (t1.clientX + t2.clientX) / 2,
+        y: (t1.clientY + t2.clientY) / 2
+      };
+    }
+
+    container.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (e.touches.length === 1) {
+        isTouchDragging = true;
+        lastTouchPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      } else if (e.touches.length === 2) {
+        isTouchDragging = false;
+        lastTouchDist = getDistance(e.touches);
+        lastMidpoint = getMidpoint(e.touches);
+      }
+    }, { passive: false });
+
+    container.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (e.touches.length === 1 && isTouchDragging) {
+        const touch = e.touches[0];
+        const dx = touch.clientX - lastTouchPos.x;
+        const dy = touch.clientY - lastTouchPos.y;
+        translateX += dx;
+        translateY += dy;
+        lastTouchPos = { x: touch.clientX, y: touch.clientY };
+        updateTransform();
+      } else if (e.touches.length === 2) {
+        const newDist = getDistance(e.touches);
+        const newMid = getMidpoint(e.touches);
+
+        const scaleChange = newDist / lastTouchDist;
+        const oldScale = scale;
+        scale *= scaleChange;
+        scale = Math.min(Math.max(scale, 0.1), 10);
+
+        translateX -= (newMid.x - translateX) * (scale / oldScale - 1);
+        translateY -= (newMid.y - translateY) * (scale / oldScale - 1);
+
+        lastTouchDist = newDist;
+        lastMidpoint = newMid;
+        updateTransform();
+      }
+    }, { passive: false });
+
+    container.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      if (e.touches.length < 2) {
+        lastTouchDist = null;
+        lastMidpoint = null;
+      }
+      if (e.touches.length === 0) {
+        isTouchDragging = false;
+      }
+    });
+  </script>
+</body>
+</html>
